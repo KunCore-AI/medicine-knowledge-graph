@@ -1,3 +1,2 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:8a52469e07b83e3cac6f7db905f6087de5e0dc4088eeb71950e763cc54d1e588
-size 50
+(萧炎, 师父, 药老)
+(魂殿, 敌对, 萧家)

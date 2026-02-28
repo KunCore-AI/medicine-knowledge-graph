@@ -1,3 +1,5 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:2b6797ab2d6ee85c160b76219df4a3f4c90f10ca4e10c65a63cd7d2b05ae909a
-size 56
+{
+  "dependencies": {
+    "vis-network": "^9.1.9"
+  }
+}

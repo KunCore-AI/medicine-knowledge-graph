@@ -1,3 +1,12 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:6c48c663732e18fc324d510f239c1d2f675cb6ba3a9fba81da872dce99d7aa43
-size 426
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="demo3.bnum" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

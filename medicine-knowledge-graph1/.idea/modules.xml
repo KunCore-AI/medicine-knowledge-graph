@@ -1,3 +1,8 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:2dc0fb1abfcbe0d45623c78d03ab4205f5674bf9988b22bd22d45766cc7fd16a
-size 309
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/medicine-knowledge-graph1.iml" filepath="$PROJECT_DIR$/.idea/medicine-knowledge-graph1.iml" />
+    </modules>
+  </component>
+</project>

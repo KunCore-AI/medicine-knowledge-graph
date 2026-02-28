@@ -1,3 +1,64 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:c540453aa06d18d3ddae16d74eed26b35e1d9065d9b39284a9a2c7e547454a69
-size 757
+# 环境变量文件（包含敏感信息）
+.env
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 日志文件
+*.log
+neo4j_import.log
+processing.log
+
+# 数据库备份
+*.backup
+
+# Node.js / Frontend
+frontend/node_modules/
+frontend/package-lock.json
+package-lock.json
+node_modules/
+
+# 临时文件
+uncertain_entities.txt
+backend/uncertain_entities.txt
+
+# 压缩包
+*.zip
+medicine-knowledge-graph1.zip
+
+# 上级目录临时文件
+custom_dict.txt
+entities.csv
+relations.csv
+data.json
