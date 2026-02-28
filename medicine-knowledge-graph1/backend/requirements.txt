@@ -5,3 +5,8 @@ hanlp==2.1.0
 jieba==0.42.1
 openai==1.12.0
 python-dotenv==1.0.0
+# BERT 相关依赖
+transformers==4.37.0
+torch==2.1.0
+sentence-transformers==2.3.0
+numpy==1.24.0

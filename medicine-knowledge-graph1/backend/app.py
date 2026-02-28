@@ -8,6 +8,19 @@ import logging
 import os
 from dotenv import load_dotenv
 
+# BERT 相关模块导入
+try:
+    from bert_ner import extract_disease_from_query, get_bert_ner
+    from bert_classifier import get_intent_classifier, classify_intent
+    from sentence_encoder import get_entity_matcher, match_entity_to_graph
+    BERT_AVAILABLE = True
+    logger = logging.getLogger(__name__)
+    logger.info("BERT 模块导入成功")
+except ImportError as e:
+    BERT_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning(f"BERT 模块导入失败: {e}，将使用原有方案")
+
 # 加载环境变量
 load_dotenv()
 
@@ -54,11 +67,33 @@ client = OpenAI(
 conversation_context = {}
 
 # 允许的关系白名单（防止注入）- 直接使用中文关系名
-ALLOWED_RELATIONS = {"症状", "治疗方法", "病因", "人群", "部位"}
+ALLOWED_RELATIONS = {
+    "症状", "治疗方法", "病因", "人群", "部位",  # 原有关系
+    "检查项目", "推荐药物", "忌吃食物", "宜吃食物",  # 新增关系
+    "并发症", "易感人群", "治疗", "预防"
+}
 
 # 同义词映射
 SYNONYM_MAP = {
-    "表现": "症状"
+    "表现": "症状",
+    "临床症状": "症状",
+    "病症": "症状",
+    "怎么治": "治疗方法",
+    "如何治疗": "治疗方法",
+    "怎么吃": "宜吃食物",
+    "不能吃": "忌吃食物",
+    "不宜吃": "忌吃食物",
+    "检查": "检查项目",
+    "用药": "推荐药物",
+    "药物": "推荐药物",
+    "药品": "推荐药物",
+    "并发": "并发症",
+    "后遗症": "并发症",
+    "易感": "易感人群",
+    "谁容易得": "易感人群",
+    "怎么预防": "预防",
+    "如何预防": "预防",
+    "防止": "预防"
 }
 
 def map_relation_to_cypher(relation: str) -> str:
@@ -119,7 +154,62 @@ def call_deepseek(query, user_id="default"):
         logger.error(f"调用 DeepSeek 模型失败: {str(e)}")
         return None
 
-def extract_entity_and_relation(query, user_id="default"):
+def extract_entity_and_relation_bert(query, user_id="default"):
+    """
+    使用 BERT 模型提取实体和关系（增强版）
+
+    Args:
+        query: 用户查询
+        user_id: 用户ID
+
+    Returns:
+        (实体名称, 关系类型)
+    """
+    if not BERT_AVAILABLE:
+        logger.debug("BERT 不可用，使用原有方案")
+        return extract_entity_and_relation_fallback(query, user_id)
+
+    try:
+        # 使用 BERT 意图分类器
+        classifier = get_intent_classifier()
+        intent_result = classifier.classify(query)
+        relation = intent_result["intent"]
+        confidence = intent_result["confidence"]
+
+        # 使用 BERT NER 提取实体
+        entity = extract_disease_from_query(query)
+
+        # 如果实体提取成功，尝试语义匹配到知识图谱
+        if entity:
+            entity_matcher = get_entity_matcher()
+            # 首次使用时加载实体列表
+            if entity_matcher.needs_update:
+                entity_matcher.load_entities_from_neo4j(neo4j_util)
+                entity_matcher.needs_update = False
+
+            # 尝试语义匹配
+            matched_entity = entity_matcher.match_entity(entity)
+            if matched_entity:
+                entity = matched_entity
+                logger.info(f"语义匹配: '{query}' -> 实体='{entity}', 关系='{relation}' (置信度: {confidence:.2f})")
+            else:
+                logger.info(f"BERT 提取: '{query}' -> 实体='{entity}', 关系='{relation}' (置信度: {confidence:.2f})")
+
+        # 如果 BERT 提取失败，回退到原有方案
+        if not entity or not relation:
+            logger.debug("BERT 提取不完整，使用原有方案补充")
+            entity_fb, relation_fb = extract_entity_and_relation_fallback(query, user_id)
+            entity = entity or entity_fb
+            relation = relation or relation_fb
+
+        return entity, relation
+
+    except Exception as e:
+        logger.error(f"BERT 提取失败: {e}，使用原有方案")
+        return extract_entity_and_relation_fallback(query, user_id)
+
+
+def extract_entity_and_relation_fallback(query, user_id="default"):
     # 使用 Jieba 分词
     terms = list(jieba.cut(query))
     logger.debug(f"分词结果: {terms}")
@@ -131,9 +221,9 @@ def extract_entity_and_relation(query, user_id="default"):
     # 扩展的正则表达式模式
     #分别针对"的+关系+疑问词"、"动词性询问"和"简洁连接"三种模式。
     # 通过正则表达式和后续映射，它们将自然语言问题转化为结构化查询参数
-    pattern1 = r"(.+?)的(症状|治疗方法|病因|人群|部位|表现)(是什么|有哪些|是啥|啊|呢)?"
-    pattern2 = r"(.+?)(怎么办|怎么治|咋治|为啥|为什么|有啥表现|有啥症状|怎么回事|咋回事)"
-    pattern3 = r"(.+?)(症状|治疗方法|病因|人群|部位|表现)"
+    pattern1 = r"(.+?)的(症状|治疗方法|病因|人群|部位|表现|检查项目|推荐药物|忌吃食物|宜吃食物|并发症|易感人群|治疗|预防)(是什么|有哪些|是啥|啊|呢)?"
+    pattern2 = r"(.+?)(怎么办|怎么治|咋治|为啥|为什么|有啥表现|有啥症状|怎么回事|咋回事|吃什么药|吃什么|不能吃什么|宜吃什么|忌吃什么|怎么预防|如何预防|做什么检查|需要检查|有什么并发症|哪些人容易得)"
+    pattern3 = r"(.+?)(症状|治疗方法|病因|人群|部位|表现|检查项目|推荐药物|忌吃食物|宜吃食物|并发症|易感人群|治疗|预防)"
 
     # 正则匹配
     match = None
@@ -154,7 +244,17 @@ def extract_entity_and_relation(query, user_id="default"):
             "有啥表现": "症状",
             "有啥症状": "症状",
             "怎么回事": "病因",
-            "咋回事": "病因"
+            "吃什么药": "推荐药物",
+            "吃什么": "宜吃食物",  # 仅在不是问药时才用
+            "不能吃什么": "忌吃食物",
+            "宜吃什么": "宜吃食物",
+            "忌吃什么": "忌吃食物",
+            "怎么预防": "预防",
+            "如何预防": "预防",
+            "做什么检查": "检查项目",
+            "需要检查": "检查项目",
+            "有什么并发症": "并发症",
+            "哪些人容易得": "易感人群"
         }
         relation = ask_to_relation.get(ask_type, None)
     elif re.search(pattern3, query):
@@ -171,7 +271,7 @@ def extract_entity_and_relation(query, user_id="default"):
                 if i > 0:
                     entity = terms[i-1]
                 if i < len(terms)-1:
-                    if terms[i+1] in ["症状", "治疗方法", "病因", "人群", "部位", "表现"]:
+                    if terms[i+1] in ["症状", "治疗方法", "病因", "人群", "部位", "表现", "检查项目", "推荐药物", "忌吃食物", "宜吃食物", "并发症", "易感人群", "治疗", "预防"]:
                         relation = terms[i+1]
                         break
             elif i < len(terms)-1 and terms[i] + terms[i+1] in ["治疗方法"]:
@@ -179,7 +279,7 @@ def extract_entity_and_relation(query, user_id="default"):
                 if i > 0:
                     entity = terms[i-1]
                 break
-            elif term in ["症状", "治疗方法", "病因", "人群", "部位", "表现"]:
+            elif term in ["症状", "治疗方法", "病因", "人群", "部位", "表现", "检查项目", "推荐药物", "忌吃食物", "宜吃食物", "并发症", "易感人群", "治疗", "预防"]:
                 relation = term
                 if i > 0 and terms[i-1] not in skip_words:
                     entity = terms[i-1]
@@ -197,7 +297,16 @@ def extract_entity_and_relation(query, user_id="default"):
     synonym_map = {
         "表现": "症状",
         "怎么治": "治疗方法",
-        "原因": "病因"
+        "原因": "病因",
+        "怎么吃": "宜吃食物",
+        "不能吃": "忌吃食物",
+        "检查": "检查项目",
+        "药物": "推荐药物",
+        "药品": "推荐药物",
+        "并发": "并发症",
+        "易感": "易感人群",
+        "怎么预防": "预防",
+        "如何预防": "预防"
     }
     if relation in synonym_map:
         relation = synonym_map[relation]
@@ -206,8 +315,14 @@ def extract_entity_and_relation(query, user_id="default"):
     if not entity and user_id in conversation_context:
         entity = conversation_context[user_id].get("last_entity")
 
-    logger.info(f"提取的实体和关系: entity={entity}, relation={relation}")
+    logger.info(f"原有方案提取: entity={entity}, relation={relation}")
     return entity, relation
+
+@app.route('/test', methods=['GET'])
+def test():
+    """测试路由"""
+    logger.info("测试路由被调用")
+    return jsonify({"status": "ok", "message": "服务器正常运行"})
 
 @app.route('/query', methods=['POST'])
 def query():
@@ -216,8 +331,8 @@ def query():
     user_id = data.get('user_id', 'default')
     logger.info(f"收到的问题: {query_text}")
 
-    # 尝试从知识图谱中提取答案
-    entity, relation = extract_entity_and_relation(query_text, user_id)
+    # 尝试从知识图谱中提取答案（使用 BERT 增强版）
+    entity, relation = extract_entity_and_relation_bert(query_text, user_id)
     if entity and relation:
         conversation_context[user_id] = {"last_entity": entity}
         try:
@@ -228,31 +343,27 @@ def query():
             answers_forward = []
             answers_backward = []
 
-            # 正向查询 - 使用参数化查询
+            # 正向查询 - 使用 WHERE 子句过滤关系类型
             logger.debug(f"执行正向查询: entity={entity}, relation={cypher_relation}")
-            query_forward = """
-            MATCH (n:Entity {name: $entity})-[r:$relation]->(m:Entity)
-            RETURN m.name AS answer
-            """
             with neo4j_util.driver.session() as session:
-                # 使用 Neo4j 的参数化查询，关系类型需要动态构建
-                # 通过白名单验证后使用字符串拼接（关系类型是标识符，不能用参数）
-                query_forward_safe = f"""
-                MATCH (n:Entity {{name: $entity}})-[r:{cypher_relation}]->(m:Entity)
+                query_forward_safe = """
+                MATCH (n:Entity {name: $entity})-[r:RELATION]->(m:Entity)
+                WHERE r.type = $relation_type
                 RETURN m.name AS answer
                 """
-                result_forward = session.run(query_forward_safe, entity=entity.strip())
+                result_forward = session.run(query_forward_safe, entity=entity.strip(), relation_type=cypher_relation)
                 answers_forward = [record["answer"] for record in result_forward]
             logger.debug(f"正向查询结果: {answers_forward}")
 
-            # 反向查询 - 使用参数化查询
+            # 反向查询 - 使用 WHERE 子句过滤关系类型
             logger.debug(f"执行反向查询: entity={entity}, relation={cypher_relation}")
-            query_backward_safe = f"""
-            MATCH (n:Entity)-[r:{cypher_relation}]->(m:Entity {{name: $entity}})
+            query_backward_safe = """
+            MATCH (n:Entity)-[r:RELATION]->(m:Entity {name: $entity})
+            WHERE r.type = $relation_type
             RETURN n.name AS answer
             """
             with neo4j_util.driver.session() as session:
-                result_backward = session.run(query_backward_safe, entity=entity.strip())
+                result_backward = session.run(query_backward_safe, entity=entity.strip(), relation_type=cypher_relation)
                 answers_backward = [record["answer"] for record in result_backward]
             logger.debug(f"反向查询结果: {answers_backward}")
 

@@ -62,3 +62,32 @@ custom_dict.txt
 entities.csv
 relations.csv
 data.json
+neo4j_import.log
+processing.log
+
+# BERT模型文件（太大，不上传）
+backend/models/
+*.pth
+*.bin
+*.pt
+*.ckpt
+*.safetensors
+
+# 测试文件
+test_*.py
+simple_test.py
+check_routes.py
+backend/test_*.py
+backend/simple_test.py
+backend/check_routes.py
+
+# 临时文件
+nul
+backend/nul
+backend/ownthink_v2.csv
+
+# 重复目录
+medicine-knowledge-graph1/
+
+# Jupyter
+.ipynb_checkpoints/

@@ -8,11 +8,33 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # 允许的关系白名单（防止注入）- 直接使用中文关系名
-ALLOWED_RELATIONS = {"症状", "治疗方法", "病因", "人群", "部位"}
+ALLOWED_RELATIONS = {
+    "症状", "治疗方法", "病因", "人群", "部位",  # 原有关系
+    "检查项目", "推荐药物", "忌吃食物", "宜吃食物",  # 新增关系
+    "并发症", "易感人群", "治疗", "预防"
+}
 
 # 同义词映射
 SYNONYM_MAP = {
-    "表现": "症状"
+    "表现": "症状",
+    "临床症状": "症状",
+    "病症": "症状",
+    "怎么治": "治疗方法",
+    "如何治疗": "治疗方法",
+    "怎么吃": "宜吃食物",
+    "不能吃": "忌吃食物",
+    "不宜吃": "忌吃食物",
+    "检查": "检查项目",
+    "用药": "推荐药物",
+    "药物": "推荐药物",
+    "药品": "推荐药物",
+    "并发": "并发症",
+    "后遗症": "并发症",
+    "易感": "易感人群",
+    "谁容易得": "易感人群",
+    "怎么预防": "预防",
+    "如何预防": "预防",
+    "防止": "预防"
 }
 
 def map_relation_to_cypher(relation: str) -> str:
@@ -75,23 +97,25 @@ class Neo4jUtil:
 
             with self.driver.session() as session:
                 # 正向查询：entity -> relation -> target
-                # 使用白名单验证后的关系类型，防止注入
-                query_forward = f"""
-                MATCH (n:Entity {{name: $entity}})-[r:{mapped_relation}]->(m:Entity)
+                # 使用 WHERE 子句过滤关系类型（实际关系存储在 r.type 属性中）
+                query_forward = """
+                MATCH (n:Entity {name: $entity})-[r:RELATION]->(m:Entity)
+                WHERE r.type = $relation_type
                 RETURN m.name AS answer
                 """
                 logger.debug(f"正向查询参数: entity={entity}, relation={mapped_relation}")
-                result_forward = session.run(query_forward, entity=entity.strip())
+                result_forward = session.run(query_forward, entity=entity.strip(), relation_type=mapped_relation)
                 answers_forward = [record["answer"] for record in result_forward]
                 logger.debug(f"正向查询结果: {answers_forward}")
 
                 # 反向查询：target -> relation -> entity
-                query_backward = f"""
-                MATCH (n:Entity)-[r:{mapped_relation}]->(m:Entity {{name: $entity}})
+                query_backward = """
+                MATCH (n:Entity)-[r:RELATION]->(m:Entity {name: $entity})
+                WHERE r.type = $relation_type
                 RETURN n.name AS answer
                 """
                 logger.debug(f"反向查询参数: entity={entity}, relation={mapped_relation}")
-                result_backward = session.run(query_backward, entity=entity.strip())
+                result_backward = session.run(query_backward, entity=entity.strip(), relation_type=mapped_relation)
                 answers_backward = [record["answer"] for record in result_backward]
                 logger.debug(f"反向查询结果: {answers_backward}")
 
